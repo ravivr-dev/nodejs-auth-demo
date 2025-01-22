@@ -1,0 +1,105 @@
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+// Register controller
+const registerUser = async (req, res) => {
+  try {
+    // Extract user info from the request body
+    const { username, email, password, role } = req.body;
+
+    // Check if the user is already exists in our database
+    const checkExistingUser = await User.find({
+      $or: [{ username }, { email }],
+    });
+
+    console.log("Existing User ->", checkExistingUser);
+
+    if (checkExistingUser.length > 0) {
+      res.status(400).json({
+        success: false,
+        messgae: "User is already exists with the same username or email",
+      });
+    } else {
+      const salt = await bcrypt.genSalt(10);
+      const hashPassword = await bcrypt.hash(password, salt);
+
+      const newlyCreatedUser = new User({
+        username,
+        email,
+        password: hashPassword,
+        role: role || "user",
+      });
+
+      await newlyCreatedUser.save();
+
+      if (newlyCreatedUser) {
+        res.status(201).json({
+          success: true,
+          messgae: "User registed successfully",
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          messgae: "Unable to register user! Please try after sometime",
+        });
+      }
+    }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({
+      success: false,
+      messgae: "Some error occured! Please try again",
+    });
+  }
+};
+
+const loginUser = async (req, res) => {
+  try {
+    // Extract user info from the request body
+    const { username, password } = req.body;
+
+    // Check if the user is exists in our database
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        messgae: `User don't exists`,
+      });
+    }
+    // If the password is correct or not
+    const isVaildPassword = await bcrypt.compare(password, user.password);
+
+    if (!isVaildPassword) {
+      return res.status(400).json({
+        success: false,
+        messgae: "Invalid credentails",
+      });
+    }
+
+    const accessToken = jwt.sign(
+      {
+        username: user.username,
+        userId: user._id,
+        role: user.role,
+      },
+      process.env.JWT_SECRET_KEY,
+      { expiresIn: "15m" }
+    );
+
+    res.status(200).json({
+      success: true,
+      messgae: "Logged-in successfully",
+      accessToken: accessToken,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({
+      success: false,
+      messgae: "Some error occured! Please try again",
+    });
+  }
+};
+
+module.exports = { registerUser, loginUser };
